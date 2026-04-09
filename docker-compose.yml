@@ -1,0 +1,77 @@
+version: "3.9"
+
+services:
+  ai-server:
+    build:
+      context: ./ai-server
+      dockerfile: Dockerfile
+    container_name: ai-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ai-server/app:/app
+      - ai-models:/app/model_weights
+    environment:
+      - DEVICE=${DEVICE:-cpu}
+      - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
+      - HF_TOKEN=${HF_TOKEN:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - capstone-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - AI_SERVER_URL=http://ai-server:8000
+      - AWS_REGION=${AWS_REGION:-ap-northeast-2}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-capstone-audio-bucket}
+      - DYNAMODB_TABLE=${DYNAMODB_TABLE:-counseling-sessions}
+    depends_on:
+      - ai-server
+    networks:
+      - capstone-net
+    volumes:
+      - ./backend/src:/app/src
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:3000
+    depends_on:
+      - backend
+    networks:
+      - capstone-net
+    volumes:
+      - ./frontend/src:/app/src
+
+networks:
+  capstone-net:
+    driver: bridge
+
+volumes:
+  ai-models:
