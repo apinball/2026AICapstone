@@ -1,5 +1,5 @@
-# GPU가 있으면 nvidia/cuda 베이스, 없으면 python:3.11-slim 으로 교체
-FROM python:3.11-slim
+# GPU가 있으면 nvidia/cuda 베이스, 없으면 python:3.10-slim 으로 교체
+FROM python:3.10-slim
 
 WORKDIR /app
 

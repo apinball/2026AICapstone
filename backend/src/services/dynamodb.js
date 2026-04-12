@@ -50,6 +50,21 @@ export async function updateSessionResult(sessionId, analysisResult) {
   );
 }
 
+export async function markSessionError(sessionId, errorMessage) {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE,
+      Key: { sessionId },
+      UpdateExpression: "SET #st = :status, #err = :error",
+      ExpressionAttributeNames: { "#st": "status", "#err": "error" },
+      ExpressionAttributeValues: {
+        ":status": "error",
+        ":error": errorMessage,
+      },
+    })
+  );
+}
+
 export async function deleteSession(sessionId) {
   await ddb.send(new DeleteCommand({ TableName: TABLE, Key: { sessionId } }));
 }

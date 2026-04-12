@@ -5,7 +5,7 @@
 
 import FormData from "form-data";
 import { Readable } from "stream";
-import { updateSessionResult } from "./db.js";
+import { updateSessionResult, markSessionError } from "./db.js";
 
 const AI_SERVER_URL = process.env.AI_SERVER_URL || "http://ai-server:8000";
 
@@ -17,26 +17,32 @@ const AI_SERVER_URL = process.env.AI_SERVER_URL || "http://ai-server:8000";
 export async function triggerAnalysis(sessionId, audioBuffer, fileName) {
   console.log(`[aiClient] Triggering analysis for session ${sessionId}`);
 
-  const formData = new FormData();
-  formData.append("file", Readable.from(audioBuffer), {
-    filename: fileName,
-    contentType: "audio/mpeg",
-  });
+  try {
+    const formData = new FormData();
+    formData.append("file", Readable.from(audioBuffer), {
+      filename: fileName,
+      contentType: "audio/mpeg",
+    });
 
-  const url = `${AI_SERVER_URL}/analyze?session_id=${encodeURIComponent(sessionId)}`;
-  const response = await fetch(url, {
-    method: "POST",
-    body: formData,
-    headers: formData.getHeaders(),
-  });
+    const url = `${AI_SERVER_URL}/analyze?session_id=${encodeURIComponent(sessionId)}`;
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+      headers: formData.getHeaders(),
+    });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`AI server error ${response.status}: ${text}`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`AI server error ${response.status}: ${text}`);
+    }
+
+    const result = await response.json();
+    await updateSessionResult(sessionId, result);
+    console.log(`[aiClient] Analysis complete for session ${sessionId}`);
+    return result;
+  } catch (err) {
+    console.error(`[aiClient] Analysis failed for session ${sessionId}: ${err.message}`);
+    await markSessionError(sessionId, err.message);
+    throw err;
   }
-
-  const result = await response.json();
-  await updateSessionResult(sessionId, result);
-  console.log(`[aiClient] Analysis complete for session ${sessionId}`);
-  return result;
 }

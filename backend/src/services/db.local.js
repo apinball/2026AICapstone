@@ -47,6 +47,14 @@ export async function updateSessionResult(sessionId, analysisResult) {
   await writeDB(db);
 }
 
+export async function markSessionError(sessionId, errorMessage) {
+  const db = await readDB();
+  if (!db[sessionId]) return;
+  db[sessionId].status = "error";
+  db[sessionId].error = errorMessage;
+  await writeDB(db);
+}
+
 export async function deleteSession(sessionId) {
   const db = await readDB();
   delete db[sessionId];

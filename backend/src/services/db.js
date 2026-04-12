@@ -14,4 +14,5 @@ export const saveSession = mod.saveSession;
 export const getSession = mod.getSession;
 export const listSessions = mod.listSessions;
 export const updateSessionResult = mod.updateSessionResult;
+export const markSessionError = mod.markSessionError;
 export const deleteSession = mod.deleteSession;
