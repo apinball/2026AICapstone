@@ -5,6 +5,7 @@ import {
   GetCommand,
   ScanCommand,
   UpdateCommand,
+  DeleteCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "ap-northeast-2" });
@@ -47,4 +48,8 @@ export async function updateSessionResult(sessionId, analysisResult) {
       },
     })
   );
+}
+
+export async function deleteSession(sessionId) {
+  await ddb.send(new DeleteCommand({ TableName: TABLE, Key: { sessionId } }));
 }
