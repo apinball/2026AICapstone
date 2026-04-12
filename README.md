@@ -42,7 +42,10 @@ cp .env.example .env
 ### 2. Docker Compose 실행
 
 ```bash
-# CPU 환경 (개발용)
+# 웹 서버만 실행 (AI 서버 없이 — 로컬 개발용)
+docker compose up --build web
+
+# 전체 실행 (웹 + AI 서버)
 docker compose up --build
 
 # GPU 환경 (NVIDIA 드라이버 + nvidia-container-toolkit 필요)
@@ -54,15 +57,86 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 | 웹 (프론트+백엔드) | http://localhost:3000 | React UI + Express API |
 | AI 서버 Swagger | http://localhost:8000/docs | FastAPI 문서 |
 
-### 3. 프론트엔드 개발 모드 (선택)
+### 3. 로컬 모드 (AWS 없이 개발)
 
-프론트 팀원이 UI 작업할 때는 Vite 개발 서버를 따로 띄울 수 있습니다.
+`.env`에 `USE_LOCAL=true` (기본값) 설정 시 AWS 없이 동작합니다.
+- S3 → `local-storage/` 폴더에 파일 저장
+- DynamoDB → `local-storage/db.json` 에 세션 저장
+
+AWS 연동 시 `USE_LOCAL=false`로 변경하면 자동 전환됩니다.
+
+---
+
+## 팀원별 개발 방법
+
+### 프론트엔드 (팀원 A)
 
 ```bash
+# 1. 백엔드를 Docker로 띄움
+docker compose up --build web
+
+# 2. 다른 터미널에서 Vite 개발 서버 실행
 cd frontend
 npm install
 npm run dev    # localhost:5173, API는 localhost:3000으로 프록시
 ```
+
+`localhost:5173`에서 UI 작업하면 됩니다. API 호출은 자동으로 `localhost:3000`으로 연결됩니다.
+
+### 백엔드 (팀원 B)
+
+```bash
+# Docker 없이 직접 실행
+cd backend
+npm install
+USE_LOCAL=true node src/index.js    # localhost:3000
+```
+
+### AI 서버 (팀원 C, D)
+
+```bash
+# Docker로 실행
+docker compose up --build ai-server
+
+# 또는 직접 실행
+cd ai-server
+pip install -r requirements.txt
+DEVICE=cpu uvicorn app.main:app --reload --port 8000
+```
+
+Swagger 문서: http://localhost:8000/docs
+
+---
+
+## API 검증 방법
+
+서버 실행 후 터미널에서 테스트:
+
+```bash
+# 헬스체크
+curl.exe http://localhost:3000/api/health
+# → {"status":"ok","local":true}
+
+# 오디오 업로드 (아무 파일이나 .mp3로 이름 바꿔서 테스트 가능)
+curl.exe -X POST http://localhost:3000/api/upload -F "audio=@test.mp3"
+# → {"sessionId":"xxxx-xxxx","status":"pending"}
+
+# 세션 목록 조회
+curl.exe http://localhost:3000/api/sessions
+# → [{"sessionId":"xxxx-xxxx","status":"pending",...}]
+
+# 세션 상세 조회
+curl.exe http://localhost:3000/api/sessions/{sessionId}
+
+# 오디오 스트리밍
+curl.exe http://localhost:3000/api/sessions/{sessionId}/audio
+
+# 세션 삭제
+curl.exe -X DELETE http://localhost:3000/api/sessions/{sessionId}
+# → {"deleted":true}
+```
+
+> **참고:** Mac/Linux에서는 `curl.exe` 대신 `curl`을 사용하세요.
 
 ---
 
@@ -96,8 +170,12 @@ npm run dev    # localhost:5173, API는 localhost:3000으로 프록시
 │       │   ├── upload.js        # POST /api/upload
 │       │   └── analysis.js      # GET/DELETE /api/sessions
 │       └── services/
-│           ├── s3.js            # S3 업로드/다운로드/삭제
-│           ├── dynamodb.js      # DynamoDB CRUD
+│           ├── storage.js       # S3 / 로컬 자동 전환 래퍼
+│           ├── storage.local.js # 로컬 파일시스템 (mock)
+│           ├── s3.js            # AWS S3
+│           ├── db.js            # DynamoDB / 로컬 자동 전환 래퍼
+│           ├── db.local.js      # 로컬 JSON DB (mock)
+│           ├── dynamodb.js      # AWS DynamoDB
 │           └── aiClient.js      # AI 서버 호출
 │
 └── frontend/                    # React + Vite (빌드 후 Express에서 서빙)
