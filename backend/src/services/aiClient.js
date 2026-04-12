@@ -5,7 +5,7 @@
 
 import FormData from "form-data";
 import { Readable } from "stream";
-import { updateSessionResult } from "./dynamodb.js";
+import { updateSessionResult } from "./db.js";
 
 const AI_SERVER_URL = process.env.AI_SERVER_URL || "http://ai-server:8000";
 

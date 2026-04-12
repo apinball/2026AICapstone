@@ -14,8 +14,14 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// 로컬 모드일 때 오디오 파일 정적 서빙
+if (process.env.USE_LOCAL === "true") {
+  app.use("/local-storage", express.static(path.resolve("local-storage")));
+  console.log("[server] Local mode enabled — using filesystem + JSON DB");
+}
+
 // API 라우트
-app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+app.get("/api/health", (_req, res) => res.json({ status: "ok", local: process.env.USE_LOCAL === "true" }));
 app.use("/api/upload", uploadRouter);
 app.use("/api/sessions", analysisRouter);
 

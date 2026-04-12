@@ -37,8 +37,11 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-capstone-audio-bucket}
       - DYNAMODB_TABLE=${DYNAMODB_TABLE:-counseling-sessions}
+      - USE_LOCAL=${USE_LOCAL:-true}
     depends_on:
       - ai-server
+    volumes:
+      - web-local-storage:/app/backend/local-storage
     networks:
       - capstone-net
 
@@ -48,3 +51,4 @@ networks:
 
 volumes:
   ai-models:
+  web-local-storage:

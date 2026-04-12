@@ -6,8 +6,8 @@
  */
 
 import { Router } from "express";
-import { getSession, listSessions, deleteSession } from "../services/dynamodb.js";
-import { getPresignedUrl, deleteFromS3 } from "../services/s3.js";
+import { getSession, listSessions, deleteSession } from "../services/db.js";
+import { getPresignedUrl, deleteFromS3 } from "../services/storage.js";
 
 const router = Router();
 

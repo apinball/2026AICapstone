@@ -9,9 +9,9 @@ import { Router } from "express";
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 
-import { uploadToS3 } from "../services/s3.js";
+import { uploadToS3 } from "../services/storage.js";
 import { triggerAnalysis } from "../services/aiClient.js";
-import { saveSession } from "../services/dynamodb.js";
+import { saveSession } from "../services/db.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
