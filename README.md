@@ -67,9 +67,9 @@ AWS 연동 시 `USE_LOCAL=false`로 변경하면 자동 전환됩니다.
 
 ---
 
-## 팀원별 개발 방법
+## 파트별 개발 방법
 
-### 프론트엔드 (팀원 A)
+### 프론트엔드
 
 ```bash
 # 1. 백엔드를 Docker로 띄움
@@ -83,7 +83,7 @@ npm run dev    # localhost:5173, API는 localhost:3000으로 프록시
 
 `localhost:5173`에서 UI 작업하면 됩니다. API 호출은 자동으로 `localhost:3000`으로 연결됩니다.
 
-### 백엔드 (팀원 B)
+### 백엔드
 
 ```bash
 # Docker 없이 직접 실행
@@ -92,7 +92,7 @@ npm install
 USE_LOCAL=true node src/index.js    # localhost:3000
 ```
 
-### AI 서버 (팀원 C, D)
+### AI 서버
 
 ```bash
 # Docker로 실행
@@ -224,17 +224,6 @@ curl.exe -X DELETE http://localhost:3000/api/sessions/{sessionId}
 
 ---
 
-## 배포 구성
-
-| 서비스 | 환경 | 비용 |
-|--------|------|------|
-| 웹 (프론트+백엔드) | EC2 프리티어 (t2.micro) 또는 Lambda | 0원 |
-| AI 서버 | EC2 스팟 (g4dn.xlarge, GPU) — 시연 시에만 구동 | ~72,000원/3개월 |
-| 파일 저장 | S3 (1일 후 자동 삭제) | ~1,500원 |
-| 데이터베이스 | DynamoDB (25GB 무료) | 0원 |
-
----
-
 ## CNN 모델 직접 학습 방법
 
 ```python
@@ -250,11 +239,11 @@ torch.save(model.state_dict(), "emotion_cnn.pth")
 
 ---
 
-## 팀원 역할 매핑
+## 역할 매핑
 
-| 팀원 | 담당 영역 | 주요 파일 |
-|------|----------|-----------|
-| A (프론트엔드) | React UI/UX, 차트 | `frontend/src/` |
-| B (백엔드) | Express API, AWS 인프라, Docker | `backend/src/`, `docker-compose.yml` |
-| C (AI 인프라 & STT) | FastAPI, Track A | `ai-server/app/pipelines/track_a_stt.py` |
-| D (ML 연구) | CNN, Track B/C | `ai-server/app/models/`, `track_b_acoustic.py`, `track_c_fusion.py` |
+| 담당 | 영역 | 주요 파일 |
+|------|------|-----------|
+| 프론트엔드 | React UI/UX, 차트 | `frontend/src/` |
+| 백엔드 | Express API, AWS 인프라, Docker | `backend/src/`, `docker-compose.yml` |
+| AI 인프라 & STT | FastAPI, Track A | `ai-server/app/pipelines/track_a_stt.py` |
+| ML 연구 | CNN, Track B/C | `ai-server/app/models/`, `track_b_acoustic.py`, `track_c_fusion.py` |
