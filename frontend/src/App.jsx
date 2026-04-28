@@ -1,44 +1,60 @@
-import { useState } from "react";
-import Dashboard from "./components/Dashboard.jsx";
-import SessionDetail from "./components/SessionDetail.jsx";
+import { useState } from 'react';
+import Landing from './pages/Landing';
+import SessionList from './pages/SessionList';
+import WorkspaceEditor from './pages/WorkspaceEditor';
+import CounselorFeedback from './pages/CounselorFeedback'; 
+import ClientReport from './pages/ClientReport'; 
 
-export default function App() {
-  const [selectedSession, setSelectedSession] = useState(null);
+function App() {
+  const [view, setView] = useState('landing'); 
+  const [userName, setUserName] = useState(() => {
+    return localStorage.getItem('counselor_name') || "이예온";
+  });
+
+  const handleLogin = (name) => {
+    const finalName = name || "이예온";
+    setUserName(finalName);
+    localStorage.setItem('counselor_name', finalName);
+    setView('sessions');
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      <header style={styles.header}>
-        <span style={styles.logo}>🎙 AI 상담 분석 대시보드</span>
-        {selectedSession && (
-          <button
-            style={{ background: "transparent", color: "#fff", fontSize: 14 }}
-            onClick={() => setSelectedSession(null)}
-          >
-            ← 목록으로
-          </button>
-        )}
-      </header>
+    <>
+      <style>
+        {`
+          * {
+            cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='7' fill='%2310b981' stroke='%23ffffff' stroke-width='1.5'/%3E%3C/svg%3E") 10 10, auto !important;
+          }
+          a, button, [onClick], [style*='cursor:pointer'] {
+             cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='14' r='12' fill='%2310b981' opacity='0.3'/%3E%3Ccircle cx='14' cy='14' r='5' fill='%2310b981' stroke='%23ffffff' stroke-width='1.5'/%3E%3C/svg%3E") 14 14, pointer !important;
+          }
+          @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          .page-transition {
+            animation: fadeSlideIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            width: 100%;
+            height: 100vh;
+          }
+          div[onClick], button, a {
+            transition: transform 0.1s ease-out !important;
+          }
+          div[onClick]:active, button:active, a:active {
+            transform: scale(0.96) !important;
+          }
+        `}
+      </style>
 
-      <main style={{ flex: 1, padding: "24px", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-        {selectedSession ? (
-          <SessionDetail session={selectedSession} />
-        ) : (
-          <Dashboard onSelectSession={setSelectedSession} />
-        )}
-      </main>
-    </div>
+      <div key={view} className="page-transition">
+        {view === 'landing' && <Landing onLogin={handleLogin} />}
+        {view === 'sessions' && <SessionList navigate={setView} counselorName={userName} />}
+        {view === 'workspace' && <WorkspaceEditor navigate={setView} counselorName={userName} />}
+        {view === 'feedback' && <CounselorFeedback navigate={setView} counselorName={userName} />}
+        {view === 'report' && <ClientReport navigate={setView} counselorName={userName} />}
+      </div>
+    </>
   );
 }
 
-const styles = {
-  header: {
-    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-    color: "#fff",
-    padding: "16px 32px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-  },
-  logo: { fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px" },
-};
+export default App;
