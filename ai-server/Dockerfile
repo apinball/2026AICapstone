@@ -28,8 +28,9 @@ RUN pip install --upgrade pip "setuptools<81" wheel
 RUN echo "setuptools<81" > /tmp/pip-constraints.txt
 ENV PIP_CONSTRAINT=/tmp/pip-constraints.txt
 
-# PyTorch nightly (CUDA 12.8) — RTX 50 시리즈 / Blackwell sm_120 커널 포함
-RUN pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128
+# PyTorch + torchaudio nightly (CUDA 12.8) — RTX 50 시리즈 / Blackwell sm_120 커널 포함
+# torchaudio는 pyannote-audio 의존성으로 필요
+RUN pip install --pre torch torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
 
 # Whisper 의존성을 미리 따로 설치 (whisper가 torch 재설치 못하게 차단)
 RUN pip install numba tqdm more-itertools tiktoken
