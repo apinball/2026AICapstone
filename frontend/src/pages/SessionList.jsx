@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Sidebar } from "../components/Sidebar";
 import { Calendar } from "../components/Calendar";
 import { ALL_SESSIONS, TAG_COLORS } from "../data/sessions";
+import { fetchSessions, uploadAudio } from "../api/client";
 
 const FOLDER_MAP = {
   home:        null,          
@@ -79,6 +80,37 @@ export default function SessionList({ navigate, counselorName }) {
   const [activeTab, setActiveTab] = useState("최근 생성");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [apiSessions, setApiSessions] = useState([]);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const data = await fetchSessions();
+        if (mounted) setApiSessions(data);
+      } catch (err) {
+        console.warn("API 미연결 — 더미 데이터 사용:", err.message);
+      }
+    };
+    load();
+    const id = setInterval(load, 5000); // 분석 진행 상태 폴링
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      await uploadAudio(file);
+      const data = await fetchSessions();
+      setApiSessions(data);
+    } catch (err) {
+      alert(`업로드 실패: ${err.message}`);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const handleNavigate = (page) => {
     if (page === 'landing') {
@@ -99,7 +131,8 @@ export default function SessionList({ navigate, counselorName }) {
   };
 
   const filtered = useMemo(() => {
-    let list = ALL_SESSIONS;
+    // API 응답이 있으면 실제 데이터, 없으면 더미 데이터
+    let list = apiSessions.length > 0 ? apiSessions : ALL_SESSIONS;
 
     if (activeFolder === "shared_in") list = list.filter(s => s.folder === "공유 받은 노트");
     else if (activeFolder === "shared_out") list = list.filter(s => s.folder === "공유한 노트");
@@ -121,15 +154,16 @@ export default function SessionList({ navigate, counselorName }) {
     if (activeTab === "공유 받은") list = list.filter(s => s.folder === "공유 받은 노트");
 
     return list.sort((a, b) => new Date(b.date + " " + b.time) - new Date(a.date + " " + a.time));
-  }, [activeFolder, selectedDate, searchQuery, activeTab]);
+  }, [activeFolder, selectedDate, searchQuery, activeTab, apiSessions]);
 
   const calendarSessions = useMemo(() => {
     if (!selectedDate) return [];
-    return ALL_SESSIONS.filter(s => {
+    const source = apiSessions.length > 0 ? apiSessions : ALL_SESSIONS;
+    return source.filter(s => {
       const sessionDay = parseInt(s.date.split('-').pop());
       return sessionDay === selectedDate && s.folder === "전체 노트";
     });
-  }, [selectedDate]);
+  }, [selectedDate, apiSessions]);
 
   const folderLabel = activeFolder
     ? { shared_in: "공유 받은 노트", shared_out: "공유한 노트", trash: "휴지통" }[activeFolder] || "전체 노트"
@@ -165,6 +199,10 @@ export default function SessionList({ navigate, counselorName }) {
               ) : (
                 <button onClick={() => setShowSearch(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#f3f4f6", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 13, color: "#9ca3af", cursor: "pointer" }}>🔍 검색</button>
               )}
+              <label style={{ display: "flex", alignItems: "center", gap: 6, background: "#22c55e", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                ＋ 업로드
+                <input ref={fileInputRef} type="file" accept=".m4a,.wav,.mp3" onChange={handleUpload} style={{ display: "none" }} />
+              </label>
             </div>
           </div>
 

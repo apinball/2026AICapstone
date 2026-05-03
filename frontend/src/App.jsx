@@ -6,7 +6,8 @@ import CounselorFeedback from './pages/CounselorFeedback';
 import ClientReport from './pages/ClientReport'; 
 
 function App() {
-  const [view, setView] = useState('landing'); 
+  const [view, setView] = useState('landing');
+  const [selectedSession, setSelectedSession] = useState(null);
   const [userName, setUserName] = useState(() => {
     return localStorage.getItem('counselor_name') || "이예온";
   });
@@ -16,6 +17,12 @@ function App() {
     setUserName(finalName);
     localStorage.setItem('counselor_name', finalName);
     setView('sessions');
+  };
+
+  // 페이지 이동 + 세션 데이터 전달용
+  const navigate = (page, session = null) => {
+    if (session) setSelectedSession(session);
+    setView(page);
   };
 
   return (
@@ -48,10 +55,10 @@ function App() {
 
       <div key={view} className="page-transition">
         {view === 'landing' && <Landing onLogin={handleLogin} />}
-        {view === 'sessions' && <SessionList navigate={setView} counselorName={userName} />}
-        {view === 'workspace' && <WorkspaceEditor navigate={setView} counselorName={userName} />}
-        {view === 'feedback' && <CounselorFeedback navigate={setView} counselorName={userName} />}
-        {view === 'report' && <ClientReport navigate={setView} counselorName={userName} />}
+        {view === 'sessions' && <SessionList navigate={navigate} counselorName={userName} />}
+        {view === 'workspace' && <WorkspaceEditor navigate={navigate} counselorName={userName} session={selectedSession} />}
+        {view === 'feedback' && <CounselorFeedback navigate={navigate} counselorName={userName} session={selectedSession} />}
+        {view === 'report' && <ClientReport navigate={navigate} counselorName={userName} session={selectedSession} />}
       </div>
     </>
   );
