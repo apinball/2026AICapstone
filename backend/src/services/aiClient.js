@@ -1,10 +1,8 @@
 /**
  * AI 서버(FastAPI) 호출 클라이언트
- * 분석 완료 후 DynamoDB 결과 저장까지 처리.
+ * 분석 완료 후 DB 결과 저장까지 처리.
  */
 
-import FormData from "form-data";
-import { Readable } from "stream";
 import { updateSessionResult, markSessionError } from "./db.js";
 
 const AI_SERVER_URL = process.env.AI_SERVER_URL || "http://ai-server:8000";
@@ -18,17 +16,15 @@ export async function triggerAnalysis(sessionId, audioBuffer, fileName) {
   console.log(`[aiClient] Triggering analysis for session ${sessionId}`);
 
   try {
+    // 네이티브 FormData + Blob (Node 20+) — boundary 자동 처리
     const formData = new FormData();
-    formData.append("file", Readable.from(audioBuffer), {
-      filename: fileName,
-      contentType: "audio/mpeg",
-    });
+    const blob = new Blob([audioBuffer], { type: "audio/mpeg" });
+    formData.append("file", blob, fileName);
 
     const url = `${AI_SERVER_URL}/analyze?session_id=${encodeURIComponent(sessionId)}`;
     const response = await fetch(url, {
       method: "POST",
       body: formData,
-      headers: formData.getHeaders(),
     });
 
     if (!response.ok) {

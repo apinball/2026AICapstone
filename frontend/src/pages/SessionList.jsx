@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { Sidebar } from "../components/Sidebar";
 import { Calendar } from "../components/Calendar";
 import { ALL_SESSIONS, TAG_COLORS } from "../data/sessions";
-import { fetchSessions, uploadAudio } from "../api/client";
+import { fetchSessions, uploadAudio, deleteSession } from "../api/client";
 
 const FOLDER_MAP = {
   home:        null,          
@@ -12,8 +12,21 @@ const FOLDER_MAP = {
   trash:       "휴지통",
 };
 
-function SessionCard({ session, onClick }) {
+function SessionCard({ session, onClick, onDelete }) {
   const isTrash = session.folder === "휴지통";
+  const isApiSession = typeof session.id === "string"; // 실제 API 세션 (uuid)
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    if (!isApiSession) {
+      alert("더미 데이터는 삭제할 수 없습니다.");
+      return;
+    }
+    if (confirm(`"${session.name}" 세션을 삭제하시겠습니까?`)) {
+      onDelete?.(session.id);
+    }
+  };
+
   return (
     <div
       onClick={() => onClick && onClick(session)}
@@ -22,9 +35,27 @@ function SessionCard({ session, onClick }) {
       style={{
         background: isTrash ? "#fafafa" : "#fff", border: "0.5px solid #e5e7eb",
         borderRadius: 10, padding: "14px 18px", cursor: "pointer", transition: "box-shadow .15s",
-        opacity: isTrash ? 0.7 : 1,
+        opacity: isTrash ? 0.7 : 1, position: "relative",
       }}
     >
+      {/* 삭제 버튼 (실제 API 세션만) */}
+      {isApiSession && (
+        <button
+          onClick={handleDelete}
+          title="세션 삭제"
+          style={{
+            position: "absolute", top: 10, right: 10,
+            background: "transparent", border: "none", cursor: "pointer",
+            color: "#9ca3af", fontSize: 16, padding: 4, borderRadius: 4,
+            transition: "all .15s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.color = "#ef4444"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#9ca3af"; }}
+        >
+          🗑️
+        </button>
+      )}
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: "50%", background: isTrash ? "#f3f4f6" : "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -43,7 +74,7 @@ function SessionCard({ session, onClick }) {
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, marginRight: isApiSession ? 24 : 0 }}>
           {isTrash ? (
             <span style={{ fontSize: 11, color: "#ef4444", padding: "3px 10px", background: "#fef2f2", borderRadius: 20, border: "0.5px solid #fca5a5" }}>🗑️ 삭제됨</span>
           ) : session.status === "done" ? (
@@ -56,6 +87,8 @@ function SessionCard({ session, onClick }) {
               </span>
               <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 500 }}>자세히 보기 →</span>
             </>
+          ) : session.status === "error" ? (
+            <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 500, background: "#fef2f2", color: "#dc2626", border: "0.5px solid #fca5a5" }}>⚠ 분석 실패</span>
           ) : (
             <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 500, background: "#eff6ff", color: "#1d4ed8", border: "0.5px solid #93c5fd" }}>⟳ 분석 중</span>
           )}
@@ -109,6 +142,16 @@ export default function SessionList({ navigate, counselorName }) {
       alert(`업로드 실패: ${err.message}`);
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDelete = async (sessionId) => {
+    try {
+      await deleteSession(sessionId);
+      const data = await fetchSessions();
+      setApiSessions(data);
+    } catch (err) {
+      alert(`삭제 실패: ${err.message}`);
     }
   };
 
@@ -226,7 +269,7 @@ export default function SessionList({ navigate, counselorName }) {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {filtered.map(s => <SessionCard key={s.id} session={s} onClick={s.status === "done" && s.folder === "전체 노트" ? () => navigate("workspace", s) : null} />)}
+              {filtered.map(s => <SessionCard key={s.id} session={s} onClick={s.status === "done" && s.folder === "전체 노트" ? () => navigate("workspace", s) : null} onDelete={handleDelete} />)}
             </div>
           )}
         </div>

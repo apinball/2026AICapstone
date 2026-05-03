@@ -13,6 +13,10 @@ numpy==1.26.4
 # Transformers (Wav2Vec2, RoBERTa) — torch 2.7 호환 버전
 transformers==4.46.3
 
+# Speaker diarization (pyannote 3.1)
+pyannote.audio==3.3.2
+torchcodec                        # torchaudio nightly의 오디오 디코딩 백엔드
+
 # Text sentiment
 sentencepiece==0.2.0
 protobuf==4.25.3
