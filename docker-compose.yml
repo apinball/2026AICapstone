@@ -9,6 +9,8 @@ services:
     volumes:
       - ./ai-server/app:/app
       - ai-models:/app/model_weights
+      - hf-cache:/root/.cache/huggingface
+      - whisper-cache:/root/.cache/whisper
     environment:
       - DEVICE=${DEVICE:-cpu}
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
@@ -50,3 +52,5 @@ networks:
 volumes:
   ai-models:
   web-local-storage:
+  hf-cache:
+  whisper-cache:
