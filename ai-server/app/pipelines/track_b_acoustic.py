@@ -14,7 +14,6 @@ from typing import Tuple
 import librosa
 import numpy as np
 import torch
-import torchaudio
 from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
 from models.emotion_cnn import EmotionCNN

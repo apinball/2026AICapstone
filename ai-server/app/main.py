@@ -8,9 +8,11 @@ AI Inference Server — FastAPI
 
 import os
 import tempfile
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import torch
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -23,9 +25,18 @@ from pipelines.track_c_fusion import FusionPipeline
 pipelines: dict = {}
 
 
+def resolve_device() -> str:
+    """환경변수 DEVICE를 읽되, cuda 미가용 시 cpu로 자동 fallback."""
+    requested = os.getenv("DEVICE", "cpu").lower()
+    if requested == "cuda" and not torch.cuda.is_available():
+        print("[startup] DEVICE=cuda requested but CUDA unavailable — falling back to cpu")
+        return "cpu"
+    return requested
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    device = os.getenv("DEVICE", "cpu")
+    device = resolve_device()
     whisper_size = os.getenv("WHISPER_MODEL_SIZE", "base")
 
     print(f"[startup] Loading models on device={device}, whisper={whisper_size}")
@@ -102,6 +113,9 @@ async def analyze_audio(
         # Track A — STT + 텍스트 감성
         stt_result = pipelines["stt"].run(tmp_path)
 
+        if not stt_result["segments"]:
+            raise HTTPException(status_code=422, detail="No speech detected in audio")
+
         # Track B — 음향 감정 (전체 오디오 기준)
         acoustic_emotion, acoustic_score = pipelines["acoustic"].run(tmp_path)
 
@@ -154,5 +168,13 @@ async def analyze_audio(
             summary_emotions=summary_emotions,
         )
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
     finally:
-        os.unlink(tmp_path)
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
