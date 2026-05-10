@@ -16,3 +16,4 @@ export const listSessions = mod.listSessions;
 export const updateSessionResult = mod.updateSessionResult;
 export const markSessionError = mod.markSessionError;
 export const deleteSession = mod.deleteSession;
+export const saveRuptureEvents = mod.saveRuptureEvents;

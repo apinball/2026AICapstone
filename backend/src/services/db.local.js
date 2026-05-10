@@ -47,6 +47,14 @@ export async function updateSessionResult(sessionId, analysisResult) {
   await writeDB(db);
 }
 
+export async function saveRuptureEvents(sessionId, ruptureEvents) {
+  const db = await readDB();
+  if (!db[sessionId]) return;
+  db[sessionId].ruptureEvents = ruptureEvents;
+  db[sessionId].ruptureAnalyzedAt = new Date().toISOString();
+  await writeDB(db);
+}
+
 export async function markSessionError(sessionId, errorMessage) {
   const db = await readDB();
   if (!db[sessionId]) return;
