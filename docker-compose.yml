@@ -40,10 +40,37 @@ services:
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-capstone-audio-bucket}
       - DYNAMODB_TABLE=${DYNAMODB_TABLE:-counseling-sessions}
       - USE_LOCAL=${USE_LOCAL:-true}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:14b}
+      - ENABLE_RUPTURE_DETECTION=${ENABLE_RUPTURE_DETECTION:-false}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - ollama
     volumes:
       - web-local-storage:/app/backend/local-storage
     networks:
       - capstone-net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - capstone-net
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   capstone-net:
@@ -54,3 +81,4 @@ volumes:
   web-local-storage:
   hf-cache:
   whisper-cache:
+  ollama-models:

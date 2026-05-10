@@ -50,6 +50,20 @@ export async function updateSessionResult(sessionId, analysisResult) {
   );
 }
 
+export async function saveRuptureEvents(sessionId, ruptureEvents) {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE,
+      Key: { sessionId },
+      UpdateExpression: "SET ruptureEvents = :events, ruptureAnalyzedAt = :ts",
+      ExpressionAttributeValues: {
+        ":events": ruptureEvents,
+        ":ts": new Date().toISOString(),
+      },
+    })
+  );
+}
+
 export async function markSessionError(sessionId, errorMessage) {
   await ddb.send(
     new UpdateCommand({
