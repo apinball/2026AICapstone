@@ -1,0 +1,30 @@
+# 실험 출력물
+outputs/
+saved_models/
+data/
+
+# 파이썬
+__pycache__/
+*.py[cod]
+*.pkl
+*.joblib
+
+# 가상환경
+venv/
+.venv/
+
+# 민감한 정보
+.env
+
+# 오디오/모델 파일
+*.wav
+*.mp3
+*.pt
+*.pth
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
