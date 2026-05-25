@@ -12,6 +12,19 @@ venv/
 # Environment
 .env
 
+# SSH keys (never commit!)
+*.pem
+*.key
+
+# Personal context / work notes (not for shared repo)
+WORK_CONTEXT.md
+
+# Test artifacts
+test.mp3
+test.wav
+test.m4a
+utputFormat
+
 # IDE
 .vscode/
 .idea/

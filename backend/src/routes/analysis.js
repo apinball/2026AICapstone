@@ -7,10 +7,9 @@
  */
 
 import { Router } from "express";
-import { getSession, listSessions, deleteSession } from "../services/db.js";
+import { getSession, listSessions, deleteSession, setJobStatus, updateSegmentSpeakers, setSegmentNote, toggleBookmark } from "../services/db.js";
 import { getPresignedUrl, deleteFromS3 } from "../services/storage.js";
-import { runRuptureDetection } from "../services/aiClient.js";
-import { isLLMConfigured, providerName } from "../services/llmClient.js";
+import { runRuptureDetection, runSummary, runRedaction } from "../services/aiClient.js";
 
 const router = Router();
 
@@ -48,23 +47,98 @@ router.get("/:sessionId/audio", async (req, res) => {
   }
 });
 
+/**
+ * AI 서버에 callback URL과 함께 비동기 트리거.
+ * AI 서버가 처리 완료 후 /api/internal/...-callback 으로 결과 push → DB 저장.
+ * 백엔드는 5분 대기 없이 즉시 응답하므로 컨테이너 재시작에도 안전.
+ */
 router.post("/:sessionId/rupture", async (req, res) => {
   try {
-    if (!isLLMConfigured()) {
-      return res.status(503).json({
-        error: `LLM not configured (${providerName === "gemini" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY"} missing)`,
-      });
-    }
     const session = await getSession(req.params.sessionId);
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
-    }
+    if (!session) return res.status(404).json({ error: "Session not found" });
     const segments = session.analysisResult?.segments;
     if (!segments?.length) {
       return res.status(400).json({ error: "Session has no segments to analyze" });
     }
-    const events = await runRuptureDetection(req.params.sessionId, segments);
-    res.json({ count: events.length, events });
+    await setJobStatus(req.params.sessionId, "rupture", "processing");
+    await runRuptureDetection(req.params.sessionId, segments);
+    res.status(202).json({ status: "started", message: "백그라운드에서 처리 중" });
+  } catch (err) {
+    await setJobStatus(req.params.sessionId, "rupture", "error", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/:sessionId/summary", async (req, res) => {
+  try {
+    const session = await getSession(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    const segments = session.analysisResult?.segments;
+    if (!segments?.length) {
+      return res.status(400).json({ error: "Session has no segments to summarize" });
+    }
+    await setJobStatus(req.params.sessionId, "summary", "processing");
+    await runSummary(req.params.sessionId, segments);
+    res.status(202).json({ status: "started", message: "백그라운드에서 처리 중" });
+  } catch (err) {
+    await setJobStatus(req.params.sessionId, "summary", "error", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/:sessionId/redact", async (req, res) => {
+  try {
+    const session = await getSession(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    const segments = session.analysisResult?.segments;
+    if (!segments?.length) {
+      return res.status(400).json({ error: "Session has no segments to redact" });
+    }
+    await setJobStatus(req.params.sessionId, "redaction", "processing");
+    await runRedaction(req.params.sessionId, segments);
+    res.status(202).json({ status: "started", message: "백그라운드에서 처리 중" });
+  } catch (err) {
+    await setJobStatus(req.params.sessionId, "redaction", "error", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 화자 라벨 수동 정정
+ * body: { speakers: ["counselor", "client", ...] } — 인덱스별 새 화자 (undefined는 유지)
+ */
+router.patch("/:sessionId/speakers", async (req, res) => {
+  try {
+    const { speakers } = req.body;
+    if (!Array.isArray(speakers)) {
+      return res.status(400).json({ error: "speakers must be an array" });
+    }
+    await updateSegmentSpeakers(req.params.sessionId, speakers);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 메모/북마크
+ *   PUT /sessions/:id/notes/:segmentIdx  body: { text }   — 빈 text는 삭제
+ *   POST /sessions/:id/bookmarks/:segmentIdx              — 토글 (있으면 제거, 없으면 추가)
+ */
+router.put("/:sessionId/notes/:segmentIdx", async (req, res) => {
+  try {
+    const { text } = req.body ?? {};
+    await setSegmentNote(req.params.sessionId, Number(req.params.segmentIdx), text ?? "");
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/:sessionId/bookmarks/:segmentIdx", async (req, res) => {
+  try {
+    const added = await toggleBookmark(req.params.sessionId, Number(req.params.segmentIdx));
+    res.json({ ok: true, bookmarked: added });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

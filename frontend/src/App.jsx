@@ -6,8 +6,23 @@ import CounselorFeedback from './pages/CounselorFeedback';
 import ClientReport from './pages/ClientReport'; 
 
 function App() {
-  const [view, setView] = useState('landing');
-  const [selectedSession, setSelectedSession] = useState(null);
+  // 새로고침 시에도 view/세션 상태 유지
+  const [view, setView] = useState(() => {
+    const saved = localStorage.getItem('current_view');
+    const hasName = localStorage.getItem('counselor_name');
+    // 이름이 저장되어 있으면 마지막 view 또는 sessions로, 아니면 landing
+    return hasName ? (saved || 'sessions') : 'landing';
+  });
+
+  const [selectedSession, setSelectedSession] = useState(() => {
+    try {
+      const saved = localStorage.getItem('selected_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [userName, setUserName] = useState(() => {
     return localStorage.getItem('counselor_name') || "이예온";
   });
@@ -17,11 +32,23 @@ function App() {
     setUserName(finalName);
     localStorage.setItem('counselor_name', finalName);
     setView('sessions');
+    localStorage.setItem('current_view', 'sessions');
   };
 
-  // 페이지 이동 + 세션 데이터 전달용
+  // 페이지 이동 + 세션 데이터 전달용 — view/session을 localStorage에 동기화
   const navigate = (page, session = null) => {
-    if (session) setSelectedSession(session);
+    if (session) {
+      setSelectedSession(session);
+      localStorage.setItem('selected_session', JSON.stringify(session));
+    }
+    if (page === 'landing') {
+      // 로그아웃: 저장된 상태 초기화
+      localStorage.removeItem('current_view');
+      localStorage.removeItem('selected_session');
+      localStorage.removeItem('counselor_name');
+    } else {
+      localStorage.setItem('current_view', page);
+    }
     setView(page);
   };
 

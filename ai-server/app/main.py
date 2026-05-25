@@ -1,9 +1,10 @@
 """
 AI Inference Server — FastAPI
-3-Track 멀티모달 감정 분석 파이프라인:
-  Track A: Whisper STT + RoBERTa 텍스트 감성 분석
+4-Track 멀티모달 상담 분석 파이프라인:
+  Track A: Whisper STT + RoBERTa 텍스트 감성 분석 + pyannote 화자 분리
   Track B: Wav2Vec2 / CNN 음향 감정 분류
   Track C: Late Fusion (가중 평균)
+  Track D: 치료 동맹 균열 감지 (Safran & Muran Alliance Rupture)
 """
 
 import os
@@ -11,15 +12,21 @@ import tempfile
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
+import httpx
 import torch
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from pipelines.track_a_stt import STTPipeline
 from pipelines.track_b_acoustic import AcousticPipeline
 from pipelines.track_c_fusion import FusionPipeline
+from pipelines.track_d_rupture import RupturePipeline
+from pipelines.summary import SummaryPipeline
+from pipelines.redaction import RedactionPipeline
+from llm.factory import get_llm_provider
 
 # ── 전역 파이프라인 인스턴스 ────────────────────────────────────────────────
 pipelines: dict = {}
@@ -43,6 +50,17 @@ async def lifespan(app: FastAPI):
     pipelines["stt"] = STTPipeline(model_size=whisper_size, device=device)
     pipelines["acoustic"] = AcousticPipeline(device=device)
     pipelines["fusion"] = FusionPipeline()
+
+    # LLM 기반 파이프라인 (Track D + Summary + Redaction)
+    try:
+        llm = get_llm_provider()
+        pipelines["rupture"] = RupturePipeline(llm)
+        pipelines["summary"] = SummaryPipeline(llm)
+        pipelines["redaction"] = RedactionPipeline(llm)
+        print(f"[startup] LLM pipelines ready (provider: {llm.name})")
+    except Exception as e:
+        print(f"[startup] LLM pipelines init failed: {e}")
+
     print("[startup] All models loaded.")
     yield
     pipelines.clear()
@@ -91,6 +109,182 @@ class AnalysisResult(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok", "models_loaded": list(pipelines.keys())}
+
+
+# ── Track D — Rupture 감지 엔드포인트 ────────────────────────────────────
+
+
+class RuptureSegment(BaseModel):
+    start: float
+    end: float
+    speaker: str
+    text: str
+
+
+class RuptureRequest(BaseModel):
+    segments: list[RuptureSegment]
+    callback_url: Optional[str] = None    # 비동기 처리 시 결과 POST할 백엔드 URL
+    session_id: Optional[str] = None      # callback에 같이 보낼 식별자
+
+
+class RuptureEvent(BaseModel):
+    rupture_type: str
+    intensity: int
+    evidence: list[str]
+    recommendation: str
+    window_start_idx: int
+    window_end_idx: int
+    window_start_time: float
+    window_end_time: float
+
+
+class RuptureResponse(BaseModel):
+    count: int
+    events: list[RuptureEvent]
+
+
+async def _post_callback(callback_url: str, payload: dict):
+    """결과를 백엔드 callback URL로 POST. 실패 시 로그만 남김."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(callback_url, json=payload)
+            if r.status_code >= 400:
+                print(f"[callback] {callback_url} returned {r.status_code}: {r.text[:200]}")
+            else:
+                print(f"[callback] Posted to {callback_url} (status {r.status_code})")
+    except Exception as e:
+        print(f"[callback] Failed to POST {callback_url}: {e}")
+
+
+async def _process_rupture_async(segments: list[dict], callback_url: str, session_id: str):
+    rupture = pipelines.get("rupture")
+    if rupture is None:
+        await _post_callback(callback_url, {"sessionId": session_id, "error": "pipeline not initialized"})
+        return
+    try:
+        events = await rupture.detect(segments)
+        await _post_callback(callback_url, {"sessionId": session_id, "events": events})
+    except Exception as e:
+        traceback.print_exc()
+        await _post_callback(callback_url, {"sessionId": session_id, "error": str(e)})
+
+
+@app.post("/analyze/rupture", response_model=RuptureResponse)
+async def analyze_rupture(request: RuptureRequest, background_tasks: BackgroundTasks):
+    """
+    이미 STT/화자 분리된 segments를 받아 sliding window로 LLM 호출 → rupture 감지.
+    callback_url 제공 시: 즉시 202 응답 후 백그라운드 처리, 완료 시 callback URL로 POST.
+    callback_url 없으면: 동기 처리 (긴 오디오는 권장하지 않음).
+    """
+    rupture = pipelines.get("rupture")
+    if rupture is None:
+        raise HTTPException(status_code=503, detail="Rupture pipeline not initialized")
+
+    segments_dict = [s.model_dump() for s in request.segments]
+
+    if request.callback_url and request.session_id:
+        background_tasks.add_task(
+            _process_rupture_async, segments_dict, request.callback_url, request.session_id
+        )
+        return RuptureResponse(count=0, events=[])
+
+    events = await rupture.detect(segments_dict)
+    return RuptureResponse(count=len(events), events=events)
+
+
+# ── 상담 요약 엔드포인트 ──────────────────────────────────────────────────
+
+
+class SummaryResponse(BaseModel):
+    headline: str
+    main_topics: list[str]
+    client_issues: list[str]
+    counselor_approach: str
+    emotional_flow: str
+    action_items: list[str]
+
+
+async def _process_summary_async(segments: list[dict], callback_url: str, session_id: str):
+    summary = pipelines.get("summary")
+    if summary is None:
+        await _post_callback(callback_url, {"sessionId": session_id, "error": "pipeline not initialized"})
+        return
+    try:
+        result = await summary.summarize(segments)
+        await _post_callback(callback_url, {"sessionId": session_id, "summary": result})
+    except Exception as e:
+        traceback.print_exc()
+        await _post_callback(callback_url, {"sessionId": session_id, "error": str(e)})
+
+
+@app.post("/analyze/summary", response_model=SummaryResponse)
+async def analyze_summary(request: RuptureRequest, background_tasks: BackgroundTasks):
+    """
+    segments를 받아 슈퍼바이저 보고용 요약 생성.
+    callback_url 제공 시 비동기 처리.
+    """
+    summary = pipelines.get("summary")
+    if summary is None:
+        raise HTTPException(status_code=503, detail="Summary pipeline not initialized")
+
+    segments_dict = [s.model_dump() for s in request.segments]
+
+    if request.callback_url and request.session_id:
+        background_tasks.add_task(
+            _process_summary_async, segments_dict, request.callback_url, request.session_id
+        )
+        return SummaryResponse(
+            headline="", main_topics=[], client_issues=[],
+            counselor_approach="", emotional_flow="", action_items=[]
+        )
+
+    try:
+        result = await summary.summarize(segments_dict)
+        return SummaryResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Summary failed: {e}")
+
+
+# ── 비식별화 엔드포인트 ──────────────────────────────────────────────────
+
+
+class RedactionResponse(BaseModel):
+    redacted: list[str]
+
+
+async def _process_redaction_async(segments: list[dict], callback_url: str, session_id: str):
+    redaction = pipelines.get("redaction")
+    if redaction is None:
+        await _post_callback(callback_url, {"sessionId": session_id, "error": "pipeline not initialized"})
+        return
+    try:
+        redacted = await redaction.redact(segments)
+        await _post_callback(callback_url, {"sessionId": session_id, "redacted": redacted})
+    except Exception as e:
+        traceback.print_exc()
+        await _post_callback(callback_url, {"sessionId": session_id, "error": str(e)})
+
+
+@app.post("/analyze/redaction", response_model=RedactionResponse)
+async def analyze_redaction(request: RuptureRequest, background_tasks: BackgroundTasks):
+    """
+    segments의 텍스트에서 개인 식별 정보를 토큰으로 치환.
+    callback_url 제공 시 비동기 처리.
+    """
+    redaction = pipelines.get("redaction")
+    if redaction is None:
+        raise HTTPException(status_code=503, detail="Redaction pipeline not initialized")
+
+    segments_dict = [s.model_dump() for s in request.segments]
+
+    if request.callback_url and request.session_id:
+        background_tasks.add_task(
+            _process_redaction_async, segments_dict, request.callback_url, request.session_id
+        )
+        return RedactionResponse(redacted=[])
+
+    redacted = await redaction.redact(segments_dict)
+    return RedactionResponse(redacted=redacted)
 
 
 @app.post("/analyze", response_model=AnalysisResult)

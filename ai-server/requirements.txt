@@ -21,6 +21,10 @@ torchcodec                        # torchaudio nightly의 오디오 디코딩 �
 sentencepiece==0.2.0
 protobuf==4.25.3
 
+# LLM clients (Track D — Rupture 감지)
+google-generativeai==0.8.3
+anthropic==0.39.0
+
 # Utility
 pydantic==2.7.1
 httpx==0.27.0

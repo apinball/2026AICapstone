@@ -1,0 +1,39 @@
+# EC2(AWS) 배포용 — web 컨테이너만 띄움
+# AI 서버와 Ollama는 로컬 PC에서 별도로 실행, Tailscale로 연결
+#
+# 사용법 (EC2 안에서):
+#   docker compose -f docker-compose.web.yml up -d --build
+#
+# 필요 환경변수 (.env):
+#   AI_SERVER_URL=http://100.65.91.74:8000        # 로컬 PC Tailscale IP
+#   SELF_INTERNAL_URL=http://100.117.253.52:3000  # EC2 Tailscale IP
+#   USE_LOCAL=true
+#   ENABLE_RUPTURE_DETECTION=false
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - AI_SERVER_URL=${AI_SERVER_URL}
+      - SELF_INTERNAL_URL=${SELF_INTERNAL_URL}
+      - USE_LOCAL=${USE_LOCAL:-true}
+      - ENABLE_RUPTURE_DETECTION=${ENABLE_RUPTURE_DETECTION:-false}
+      # AWS는 USE_LOCAL=false일 때만 사용
+      - AWS_REGION=${AWS_REGION:-ap-northeast-2}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-}
+      - DYNAMODB_TABLE=${DYNAMODB_TABLE:-}
+    volumes:
+      - web-local-storage:/app/backend/local-storage
+    restart: unless-stopped
+
+volumes:
+  web-local-storage:

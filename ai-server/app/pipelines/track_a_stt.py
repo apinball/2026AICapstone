@@ -6,12 +6,19 @@ Track A — STT 및 텍스트 문맥 감성 분석 (Lexical Pipeline)
 """
 
 import os
+import tempfile
+import warnings
 from typing import Any
 
+import librosa
+import numpy as np
+import soundfile as sf
 import torch
 import torchaudio
 import whisper
 from transformers import pipeline as hf_pipeline
+
+warnings.filterwarnings("ignore", message=".*backend.*parameter is not used by TorchCodec.*")
 
 # torchaudio nightly 호환 shim — pyannote 3.3.2가 참조하는 옛 API 보충
 if not hasattr(torchaudio, "AudioMetaData"):
@@ -115,12 +122,35 @@ class STTPipeline:
 
     # ── 화자 분리 ────────────────────────────────────────────────────────
 
+    def _normalize_audio_for_pyannote(self, audio_path: str) -> str:
+        """
+        pyannote 3.3.2 + torchaudio nightly의 텐서 크기 불일치 버그 우회.
+        오디오를 16kHz mono로 변환 + chunk size(10초)에 맞춰 패딩한 임시 wav 생성.
+        """
+        y, _ = librosa.load(audio_path, sr=16000, mono=True)
+        chunk_samples = 16000 * 10  # pyannote 기본 segmentation chunk
+        target_len = ((len(y) + chunk_samples - 1) // chunk_samples) * chunk_samples
+        if len(y) < target_len:
+            y = np.pad(y, (0, target_len - len(y)), mode="constant")
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        tmp.close()
+        sf.write(tmp.name, y, 16000, subtype="PCM_16")
+        return tmp.name
+
     def _diarize_pyannote(self, audio_path: str) -> list[dict]:
         """pyannote로 (start, end, speaker_id) 리스트 반환.
         1대1 상담이라는 도메인 정보를 활용해 화자 수를 2명으로 강제.
-        (pyannote가 긴 오디오에서 화자를 합쳐버리는 현상 방지)
         """
-        diar_result = self.diarization(audio_path, num_speakers=2)
+        normalized_path = self._normalize_audio_for_pyannote(audio_path)
+        try:
+            diar_result = self.diarization(normalized_path, num_speakers=2)
+        finally:
+            try:
+                os.unlink(normalized_path)
+            except OSError:
+                pass
+
         turns = []
         for turn, _, speaker_id in diar_result.itertracks(yield_label=True):
             turns.append({
@@ -215,12 +245,18 @@ class STTPipeline:
         ]
         filtered = self._vad_filter(raw_segments)
 
-        # 화자 분리
+        # 화자 분리 — pyannote 시도 후 실패 시 규칙 기반 fallback
+        with_speakers = None
         if self.diarization is not None:
             print("[TrackA] Running pyannote diarization...")
-            diar_turns = self._diarize_pyannote(audio_path)
-            with_speakers = self._map_speakers_by_overlap(filtered, diar_turns)
-        else:
+            try:
+                diar_turns = self._diarize_pyannote(audio_path)
+                with_speakers = self._map_speakers_by_overlap(filtered, diar_turns)
+            except Exception as e:
+                print(f"[TrackA] Pyannote runtime error ({type(e).__name__}: {e}) — falling back to rule-based")
+                with_speakers = None
+
+        if with_speakers is None:
             with_speakers = self._assign_speakers_by_gap(filtered)
 
         # 텍스트 감성 분석

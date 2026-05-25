@@ -64,6 +64,118 @@ export async function saveRuptureEvents(sessionId, ruptureEvents) {
   );
 }
 
+export async function saveSummary(sessionId, summary) {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE,
+      Key: { sessionId },
+      UpdateExpression: "SET summary = :summary, summaryGeneratedAt = :ts",
+      ExpressionAttributeValues: {
+        ":summary": summary,
+        ":ts": new Date().toISOString(),
+      },
+    })
+  );
+}
+
+export async function saveRedactedSegments(sessionId, redactedTexts) {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE,
+      Key: { sessionId },
+      UpdateExpression: "SET redactedSegments = :r, redactedAt = :ts",
+      ExpressionAttributeValues: {
+        ":r": redactedTexts,
+        ":ts": new Date().toISOString(),
+      },
+    })
+  );
+}
+
+/**
+ * 사용자가 수동으로 화자 라벨을 정정.
+ * DynamoDB는 부분 nested 업데이트가 까다로워, get → 수정 → put 패턴 사용.
+ */
+export async function updateSegmentSpeakers(sessionId, speakers) {
+  const { Item: session } = await ddb.send(
+    new GetCommand({ TableName: TABLE, Key: { sessionId } })
+  );
+  if (!session?.analysisResult?.segments) return;
+
+  const segs = session.analysisResult.segments;
+  segs.forEach((seg, i) => {
+    if (speakers[i]) seg.speaker = speakers[i];
+  });
+
+  const total = segs.reduce((s, x) => s + (x.end - x.start), 0) || 1;
+  const counselorTime = segs
+    .filter((x) => x.speaker === "counselor")
+    .reduce((s, x) => s + (x.end - x.start), 0);
+  session.analysisResult.counselor_talk_ratio = counselorTime / total;
+
+  await ddb.send(new PutCommand({ TableName: TABLE, Item: session }));
+}
+
+export async function setSegmentNote(sessionId, segmentIdx, text) {
+  const { Item: session } = await ddb.send(new GetCommand({ TableName: TABLE, Key: { sessionId } }));
+  if (!session) return;
+  const notes = session.notes || {};
+  if (text && text.trim()) {
+    notes[segmentIdx] = { text: text.trim(), updatedAt: new Date().toISOString() };
+  } else {
+    delete notes[segmentIdx];
+  }
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE,
+      Key: { sessionId },
+      UpdateExpression: "SET notes = :n",
+      ExpressionAttributeValues: { ":n": notes },
+    })
+  );
+}
+
+export async function toggleBookmark(sessionId, segmentIdx) {
+  const { Item: session } = await ddb.send(new GetCommand({ TableName: TABLE, Key: { sessionId } }));
+  if (!session) return false;
+  const bookmarks = session.bookmarks || [];
+  const idx = bookmarks.indexOf(segmentIdx);
+  let added;
+  if (idx >= 0) {
+    bookmarks.splice(idx, 1);
+    added = false;
+  } else {
+    bookmarks.push(segmentIdx);
+    bookmarks.sort((a, b) => a - b);
+    added = true;
+  }
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE,
+      Key: { sessionId },
+      UpdateExpression: "SET bookmarks = :b",
+      ExpressionAttributeValues: { ":b": bookmarks },
+    })
+  );
+  return added;
+}
+
+export async function setJobStatus(sessionId, kind, status, errorMessage = null) {
+  const path = `jobStatus.${kind}`;
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE,
+      Key: { sessionId },
+      UpdateExpression: `SET #js = if_not_exists(#js, :empty), #js.#k = :val`,
+      ExpressionAttributeNames: { "#js": "jobStatus", "#k": kind },
+      ExpressionAttributeValues: {
+        ":empty": {},
+        ":val": { status, error: errorMessage, updatedAt: new Date().toISOString() },
+      },
+    })
+  );
+}
+
 export async function markSessionError(sessionId, errorMessage) {
   await ddb.send(
     new UpdateCommand({

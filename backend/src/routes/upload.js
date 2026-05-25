@@ -21,25 +21,27 @@ router.post("/", upload.single("audio"), async (req, res) => {
     return res.status(400).json({ error: "No audio file provided" });
   }
 
+  // multer가 multipart filename을 latin1로 디코딩해 한글이 mojibake가 되는 문제 수정
+  const fileName = Buffer.from(req.file.originalname, "latin1").toString("utf8");
   const sessionId = uuidv4();
-  const s3Key = `sessions/${sessionId}/${req.file.originalname}`;
+  const s3Key = `sessions/${sessionId}/${fileName}`;
 
   try {
     // 1. S3 업로드
     await uploadToS3(s3Key, req.file.buffer, req.file.mimetype);
     console.log(`[upload] S3 uploaded: ${s3Key}`);
 
-    // 2. DynamoDB에 pending 상태로 초기 저장
+    // 2. DB에 pending 상태로 초기 저장
     await saveSession({
       sessionId,
       s3Key,
       status: "pending",
       createdAt: new Date().toISOString(),
-      fileName: req.file.originalname,
+      fileName,
     });
 
     // 3. AI 분석 비동기 트리거 (응답을 기다리지 않음)
-    triggerAnalysis(sessionId, req.file.buffer, req.file.originalname).catch((err) =>
+    triggerAnalysis(sessionId, req.file.buffer, fileName).catch((err) =>
       console.error(`[upload] Analysis trigger failed: ${err.message}`)
     );
 

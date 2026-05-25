@@ -77,3 +77,66 @@ export async function deleteSession(sessionId) {
 export function getAudioUrl(sessionId) {
   return `${API_BASE}/sessions/${sessionId}/audio`;
 }
+
+/**
+ * 치료 동맹 균열 감지 (수동 트리거)
+ * @returns {Promise<{count: number, events: Array}>}
+ */
+export async function triggerRuptureDetection(sessionId) {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/rupture`, { method: "POST" });
+  if (!res.ok) throw new Error(`Rupture detection failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * 슈퍼바이저 보고용 요약 생성
+ */
+export async function triggerSummary(sessionId) {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/summary`, { method: "POST" });
+  if (!res.ok) throw new Error(`Summary failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * 개인정보 비식별화
+ * @returns {Promise<{count: number, redacted: string[]}>}
+ */
+export async function triggerRedaction(sessionId) {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/redact`, { method: "POST" });
+  if (!res.ok) throw new Error(`Redaction failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * 화자 라벨 수동 정정
+ * @param {string[]} speakers — 인덱스별 새 화자 ('counselor' | 'client')
+ */
+export async function updateSpeakers(sessionId, speakers) {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/speakers`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ speakers }),
+  });
+  if (!res.ok) throw new Error(`Speaker update failed: ${res.status}`);
+  return res.json();
+}
+
+/** 발화 메모 저장/삭제 */
+export async function saveNote(sessionId, segmentIdx, text) {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/notes/${segmentIdx}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`Note save failed: ${res.status}`);
+  return res.json();
+}
+
+/** 북마크 토글 */
+export async function toggleBookmark(sessionId, segmentIdx) {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/bookmarks/${segmentIdx}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`Bookmark toggle failed: ${res.status}`);
+  return res.json();
+}

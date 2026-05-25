@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 
 import uploadRouter from "./routes/upload.js";
 import analysisRouter from "./routes/analysis.js";
+import internalRouter from "./routes/internal.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -24,6 +25,7 @@ if (process.env.USE_LOCAL === "true") {
 app.get("/api/health", (_req, res) => res.json({ status: "ok", local: process.env.USE_LOCAL === "true" }));
 app.use("/api/upload", uploadRouter);
 app.use("/api/sessions", analysisRouter);
+app.use("/api/internal", internalRouter);  // AI 서버 → 백엔드 callback (도커 내부 전용)
 
 // React 정적 파일 서빙 (빌드 후)
 const clientDist = path.join(__dirname, "../../frontend/dist");
