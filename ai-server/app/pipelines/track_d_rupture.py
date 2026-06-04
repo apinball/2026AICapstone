@@ -66,6 +66,7 @@ Safran & Muran의 Alliance Rupture 이론을 기반으로 아래 상담 대화�
 {
   "rupture_type": "withdrawal" | "confrontation" | "none",
   "intensity": 0~10 정수,
+  "intensity_reasoning": "왜 이 강도인지 (신호 개수, 빈도, 시간 흐름 등) — 1~2문장",
   "evidence": ["근거가 된 발화 번호와 이유 (2~3개)"],
   "recommendation": "상담사를 위한 repair 방향 1줄"
 }
@@ -140,6 +141,7 @@ class RupturePipeline:
                 {
                     "rupture_type": rupture_type,
                     "intensity": int(intensity),
+                    "intensity_reasoning": result.get("intensity_reasoning", "") or "",
                     "evidence": result.get("evidence", []) or [],
                     "recommendation": result.get("recommendation", "") or "",
                     "window_start_idx": i,

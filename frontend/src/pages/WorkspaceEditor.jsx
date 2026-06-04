@@ -489,14 +489,17 @@ export default function WorkspaceEditor({ navigate, session }) {
             </div>
           </div>
 
-          {/* 인지왜곡 분포 */}
+          {/* 인지왜곡 — 분포 + 발화별 카드 */}
           {distortions.length > 0 && (
             <div style={{ background: '#fff', padding: 24, borderRadius: 20, border: '1px solid #f1f5f9', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ background: '#fce7f3', color: '#db2777', padding: 6, borderRadius: 8, fontSize: 16 }}>🧠</div>
                 인지왜곡 ({distortions.length}건)
               </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+
+              {/* 유형별 빈도 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>유형별 빈도</div>
                 {Object.entries(distortionCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([type, count]) => {
                   const meta = DISTORTION_LABELS[type];
                   if (!meta) return null;
@@ -512,8 +515,43 @@ export default function WorkspaceEditor({ navigate, session }) {
                   );
                 })}
               </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', borderTop: '1px dashed #e2e8f0', paddingTop: 10 }}>
-                💡 발화의 인지왜곡 배지를 클릭하면 권장 개입 기법이 표시됩니다
+
+              {/* 발화별 카드 (강도 내림차순 top 5) */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>주요 발화 (클릭 → 이동)</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {[...distortions].sort((a, b) => b.intensity - a.intensity).slice(0, 5).map((d, i) => {
+                  const types = (d.distortion_types || []).map(t => DISTORTION_LABELS[t]).filter(Boolean);
+                  const mainColor = types[0]?.color || '#db2777';
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => jumpToSegment(d.segment_idx)}
+                      title="클릭하여 해당 발화로 이동"
+                      style={{ background: '#fdf2f8', borderLeft: `4px solid ${mainColor}`, padding: '10px 12px', borderRadius: 8, cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
+                      onMouseOver={(e) => { e.currentTarget.style.transform = 'translateX(2px)'; e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.08)'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.transform = 'translateX(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+                        {types.map((t, j) => (
+                          <span key={j} style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: t.color, padding: '2px 7px', borderRadius: 10 }}>
+                            {t.ko}
+                          </span>
+                        ))}
+                        <span style={{ fontSize: 10, color: '#9333ea', marginLeft: 'auto', fontWeight: 700 }}>강도 {d.intensity}/10</span>
+                      </div>
+                      {d.explanation && (
+                        <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.5, marginBottom: 6 }}>
+                          {d.explanation}
+                        </div>
+                      )}
+                      {d.suggested_intervention && (
+                        <div style={{ fontSize: 11, color: '#0c4a6e', background: '#e0f2fe', padding: '6px 8px', borderRadius: 6, lineHeight: 1.4 }}>
+                          💡 {d.suggested_intervention}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -587,19 +625,29 @@ export default function WorkspaceEditor({ navigate, session }) {
                           {formatTime(ev.window_start_time)}~{formatTime(ev.window_end_time)} →
                         </span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#475569', marginBottom: 6 }}>
-                        강도: <strong>{ev.intensity}/10</strong>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, color: '#475569' }}>강도</span>
+                        <div style={{ flex: 1, height: 6, background: '#fff', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ width: `${ev.intensity * 10}%`, height: '100%', background: color, borderRadius: 3 }} />
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700, color }}>{ev.intensity}/10</span>
                       </div>
+                      {ev.intensity_reasoning && (
+                        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, fontStyle: 'italic', padding: '4px 0' }}>
+                          📊 {ev.intensity_reasoning}
+                        </div>
+                      )}
                       {ev.evidence?.length > 0 && (
                         <div style={{ fontSize: 12, color: '#334155', marginBottom: 8, lineHeight: 1.5 }}>
-                          {ev.evidence.slice(0, 2).map((e, j) => (
+                          <div style={{ fontWeight: 700, fontSize: 10, color: '#64748b', marginBottom: 4 }}>근거</div>
+                          {ev.evidence.slice(0, 3).map((e, j) => (
                             <div key={j} style={{ marginBottom: 2 }}>• {e}</div>
                           ))}
                         </div>
                       )}
                       {ev.recommendation && (
                         <div style={{ fontSize: 12, color: '#1e293b', background: '#fff', padding: '8px 10px', borderRadius: 6, marginTop: 6, lineHeight: 1.5 }}>
-                          💡 {ev.recommendation}
+                          💡 <strong>권장 개입:</strong> {ev.recommendation}
                         </div>
                       )}
                     </div>
@@ -729,10 +777,11 @@ export default function WorkspaceEditor({ navigate, session }) {
                         return (
                           <span
                             key={t}
-                            title={`${meta.ko} (강도 ${segDistortion.intensity})\n${segDistortion.explanation}\n\n💡 ${segDistortion.suggested_intervention}`}
-                            style={{ padding: '3px 8px', background: meta.color, color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, cursor: 'help' }}
+                            onClick={(e) => { e.stopPropagation(); jumpToSegment(chat.id); }}
+                            title="클릭하여 강조"
+                            style={{ padding: '3px 8px', background: meta.color, color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
                           >
-                            🧠 {meta.ko}
+                            🧠 {meta.ko} {segDistortion.intensity}
                           </span>
                         );
                       })}
@@ -760,6 +809,36 @@ export default function WorkspaceEditor({ navigate, session }) {
                         <span title="북마크" style={{ position: 'absolute', top: -8, [isCounselor ? 'left' : 'right']: -8, fontSize: 16 }}>🔖</span>
                       )}
                     </div>
+
+                    {/* 활성 상태에서 인지왜곡 상세 설명 */}
+                    {isActive && segDistortion && (
+                      <div style={{ marginTop: 8, padding: '12px 14px', background: '#fdf2f8', borderLeft: '4px solid #db2777', borderRadius: 8, width: '100%' }}>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                          {(segDistortion.distortion_types || []).map(t => {
+                            const meta = DISTORTION_LABELS[t];
+                            if (!meta) return null;
+                            return (
+                              <span key={t} style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: meta.color, padding: '3px 8px', borderRadius: 10 }}>{meta.ko}</span>
+                            );
+                          })}
+                          <span style={{ fontSize: 11, color: '#9333ea', fontWeight: 700, marginLeft: 'auto' }}>강도 {segDistortion.intensity}/10</span>
+                        </div>
+                        {segDistortion.intensity_reasoning && (
+                          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, fontStyle: 'italic' }}>📊 {segDistortion.intensity_reasoning}</div>
+                        )}
+                        {segDistortion.explanation && (
+                          <div style={{ fontSize: 12, color: '#334155', marginBottom: 8, lineHeight: 1.5 }}>
+                            <strong style={{ color: '#64748b', fontSize: 10 }}>판정 근거</strong>
+                            <div>{segDistortion.explanation}</div>
+                          </div>
+                        )}
+                        {segDistortion.suggested_intervention && (
+                          <div style={{ fontSize: 12, color: '#0c4a6e', background: '#e0f2fe', padding: '8px 10px', borderRadius: 6, lineHeight: 1.5 }}>
+                            💡 <strong>권장 CBT 개입:</strong> {segDistortion.suggested_intervention}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* 메모 영역 */}
                     {isRealSession && (editingNoteIdx === chat.id ? (

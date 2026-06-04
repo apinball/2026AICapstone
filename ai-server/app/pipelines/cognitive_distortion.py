@@ -93,8 +93,9 @@ Aaron Beck과 David Burns의 인지왜곡 이론을 기반으로 내담자 발�
       "segment_idx": 정수,
       "distortion_types": ["유형1", "유형2"],
       "intensity": 0~10 정수,
-      "explanation": "왜 그 유형으로 판단했는지 1~2문장",
-      "suggested_intervention": "상담사가 적용할 수 있는 CBT 개입 기법 1줄"
+      "intensity_reasoning": "왜 이 강도인지 (왜곡 신호의 명시성, 자기 신념과의 결합 정도 등) — 1문장",
+      "explanation": "왜 그 유형으로 판단했는지 발화의 어떤 부분을 근거로 했는지 1~2문장",
+      "suggested_intervention": "상담사가 적용할 수 있는 CBT 개입 기법 1줄 (구체적으로)"
     }
   ]
 }
@@ -177,6 +178,7 @@ class CognitiveDistortionPipeline:
                     "segment_idx": int(d.get("segment_idx", -1)),
                     "distortion_types": d.get("distortion_types", []),
                     "intensity": int(intensity),
+                    "intensity_reasoning": d.get("intensity_reasoning", ""),
                     "explanation": d.get("explanation", ""),
                     "suggested_intervention": d.get("suggested_intervention", ""),
                 })
