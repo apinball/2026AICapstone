@@ -92,6 +92,34 @@ export async function saveRedactedSegments(sessionId, redactedTexts) {
   );
 }
 
+export async function saveDistortions(sessionId, distortions) {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE,
+      Key: { sessionId },
+      UpdateExpression: "SET distortions = :d, distortionsAnalyzedAt = :ts",
+      ExpressionAttributeValues: {
+        ":d": distortions,
+        ":ts": new Date().toISOString(),
+      },
+    })
+  );
+}
+
+export async function saveWorksheets(sessionId, worksheets) {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE,
+      Key: { sessionId },
+      UpdateExpression: "SET worksheets = :w, worksheetsGeneratedAt = :ts",
+      ExpressionAttributeValues: {
+        ":w": worksheets,
+        ":ts": new Date().toISOString(),
+      },
+    })
+  );
+}
+
 /**
  * 사용자가 수동으로 화자 라벨을 정정.
  * DynamoDB는 부분 nested 업데이트가 까다로워, get → 수정 → put 패턴 사용.

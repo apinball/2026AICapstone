@@ -71,6 +71,22 @@ export async function saveRedactedSegments(sessionId, redactedTexts) {
   await writeDB(db);
 }
 
+export async function saveDistortions(sessionId, distortions) {
+  const db = await readDB();
+  if (!db[sessionId]) return;
+  db[sessionId].distortions = distortions;
+  db[sessionId].distortionsAnalyzedAt = new Date().toISOString();
+  await writeDB(db);
+}
+
+export async function saveWorksheets(sessionId, worksheets) {
+  const db = await readDB();
+  if (!db[sessionId]) return;
+  db[sessionId].worksheets = worksheets;
+  db[sessionId].worksheetsGeneratedAt = new Date().toISOString();
+  await writeDB(db);
+}
+
 /**
  * 작업별 진행 상태 저장 (rupture / summary / redaction)
  * @param {string} kind - "rupture" | "summary" | "redaction"

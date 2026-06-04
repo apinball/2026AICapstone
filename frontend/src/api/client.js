@@ -140,3 +140,17 @@ export async function toggleBookmark(sessionId, segmentIdx) {
   if (!res.ok) throw new Error(`Bookmark toggle failed: ${res.status}`);
   return res.json();
 }
+
+/** 인지왜곡 탐지 (CBT) */
+export async function triggerDistortion(sessionId) {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/distortion`, { method: "POST" });
+  if (!res.ok) throw new Error(`Distortion detection failed: ${res.status}`);
+  return res.json();
+}
+
+/** CBT 워크시트 생성 (인지왜곡 탐지 후 실행) */
+export async function triggerWorksheet(sessionId) {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/worksheet`, { method: "POST" });
+  if (!res.ok) throw new Error(`Worksheet generation failed: ${res.status}`);
+  return res.json();
+}

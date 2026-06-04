@@ -62,8 +62,10 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
-    ports:
-      - "11434:11434"
+    # 포트 외부 노출 안 함 — ai-server는 도커 네트워크로 직접 접속 (호스트 Ollama와 충돌 방지)
+    # 호스트에서 직접 디버깅 필요하면 아래 줄 활성화:
+    # ports:
+    #   - "11434:11434"
     volumes:
       - ollama-models:/root/.ollama
     networks:

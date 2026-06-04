@@ -1,5 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchSession, getAudioUrl, triggerRuptureDetection, triggerSummary, triggerRedaction, updateSpeakers, saveNote, toggleBookmark } from '../api/client';
+import { fetchSession, getAudioUrl, triggerRuptureDetection, triggerSummary, triggerRedaction, triggerDistortion, triggerWorksheet, updateSpeakers, saveNote, toggleBookmark } from '../api/client';
+
+const DISTORTION_LABELS = {
+  all_or_nothing: { ko: "흑백사고", color: "#dc2626" },
+  overgeneralization: { ko: "과잉일반화", color: "#ea580c" },
+  mental_filter: { ko: "정신적 필터링", color: "#d97706" },
+  disqualifying_positive: { ko: "긍정 무시", color: "#ca8a04" },
+  jumping_to_conclusions: { ko: "결론 도약", color: "#65a30d" },
+  catastrophizing: { ko: "재앙화", color: "#dc2626" },
+  minimization: { ko: "축소화", color: "#0891b2" },
+  emotional_reasoning: { ko: "감정적 추론", color: "#7c3aed" },
+  should_statements: { ko: "당위적 사고", color: "#a21caf" },
+  labeling: { ko: "낙인찍기", color: "#be185d" },
+  personalization: { ko: "개인화", color: "#9333ea" },
+};
 
 const MOCK_TRANSCRIPT = [
   { id: 1, time: "00:01", speaker: "counselor", text: "안녕하세요, 지우님. 지난주에 뵙고 일주일 만이네요. 그동안 어떻게 지내셨나요?" },
@@ -25,7 +39,10 @@ export default function WorkspaceEditor({ navigate, session }) {
   const [ruptureLoading, setRuptureLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [redactionLoading, setRedactionLoading] = useState(false);
+  const [distortionLoading, setDistortionLoading] = useState(false);
+  const [worksheetLoading, setWorksheetLoading] = useState(false);
   const [showRedacted, setShowRedacted] = useState(false);
+  const [showWorksheet, setShowWorksheet] = useState(false);
 
   // 실제 세션이면 백엔드에서 분석 결과 가져오기 + processing 중인 작업 자동 폴링
   useEffect(() => {
@@ -105,6 +122,29 @@ export default function WorkspaceEditor({ navigate, session }) {
       alert(`비식별화 실패: ${err.message}`);
     } finally {
       setRedactionLoading(false);
+    }
+  };
+
+  const handleDistortionDetect = async () => {
+    setDistortionLoading(true);
+    try {
+      await pollUntilReady('distortionsAnalyzedAt', triggerDistortion);
+    } catch (err) {
+      alert(`인지왜곡 탐지 실패: ${err.message}`);
+    } finally {
+      setDistortionLoading(false);
+    }
+  };
+
+  const handleWorksheetGenerate = async () => {
+    setWorksheetLoading(true);
+    try {
+      await pollUntilReady('worksheetsGeneratedAt', triggerWorksheet);
+      setShowWorksheet(true);
+    } catch (err) {
+      alert(`워크시트 생성 실패: ${err.message}`);
+    } finally {
+      setWorksheetLoading(false);
     }
   };
 
@@ -204,12 +244,28 @@ export default function WorkspaceEditor({ navigate, session }) {
   const summary = analysisData?.summary;
   const redactedSegments = analysisData?.redactedSegments;
   const hasRedaction = Array.isArray(redactedSegments) && redactedSegments.length > 0;
+  const distortions = analysisData?.distortions ?? [];
+  const worksheets = analysisData?.worksheets ?? [];
+
+  // 발화 인덱스 → 인지왜곡 매핑
+  const distortionMap = {};
+  distortions.forEach(d => { distortionMap[d.segment_idx] = d; });
+
+  // 인지왜곡 유형별 빈도
+  const distortionCounts = {};
+  distortions.forEach(d => {
+    (d.distortion_types || []).forEach(t => {
+      distortionCounts[t] = (distortionCounts[t] || 0) + 1;
+    });
+  });
 
   // DB의 jobStatus 기반 — 페이지 재진입에도 상태 유지
   const jobStatus = analysisData?.jobStatus ?? {};
   const ruptureProcessing = jobStatus.rupture?.status === "processing" || ruptureLoading;
   const summaryProcessing = jobStatus.summary?.status === "processing" || summaryLoading;
   const redactionProcessing = jobStatus.redaction?.status === "processing" || redactionLoading;
+  const distortionProcessing = jobStatus.distortion?.status === "processing" || distortionLoading;
+  const worksheetProcessing = jobStatus.worksheet?.status === "processing" || worksheetLoading;
 
   // 세그먼트가 어떤 rupture 윈도우에 속하는지 매핑
   const segmentRuptureMap = {};
@@ -352,6 +408,43 @@ export default function WorkspaceEditor({ navigate, session }) {
               >
                 {ruptureProcessing ? '⟳ 분석 중...' : '🔍 균열 감지'}
               </button>
+              <button
+                onClick={handleDistortionDetect}
+                disabled={distortionProcessing}
+                title="인지왜곡 자동 탐지 (Aaron Beck CBT)"
+                style={{
+                  padding: '10px 20px',
+                  background: distortionProcessing ? '#94a3b8' : '#db2777',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 12,
+                  cursor: distortionProcessing ? 'wait' : 'pointer',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  boxShadow: '0 4px 12px rgba(219, 39, 119, 0.3)',
+                }}
+              >
+                {distortionProcessing ? '⟳ 분석 중...' : '🧠 인지왜곡'}
+              </button>
+              {distortions.length > 0 && (
+                <button
+                  onClick={worksheets.length > 0 ? () => setShowWorksheet(v => !v) : handleWorksheetGenerate}
+                  disabled={worksheetProcessing}
+                  title="CBT 워크시트 (사고 기록지)"
+                  style={{
+                    padding: '10px 20px',
+                    background: worksheetProcessing ? '#94a3b8' : (showWorksheet && worksheets.length > 0 ? '#0891b2' : '#fff'),
+                    color: worksheetProcessing || (showWorksheet && worksheets.length > 0) ? '#fff' : '#0891b2',
+                    border: '1.5px solid #0891b2',
+                    borderRadius: 12,
+                    cursor: worksheetProcessing ? 'wait' : 'pointer',
+                    fontWeight: 600,
+                    fontSize: 14,
+                  }}
+                >
+                  {worksheetProcessing ? '⟳ 생성 중...' : (worksheets.length > 0 ? `📋 워크시트 ${showWorksheet ? 'ON' : 'OFF'}` : '📋 워크시트 생성')}
+                </button>
+              )}
             </>
           )}
         </div>
@@ -395,6 +488,75 @@ export default function WorkspaceEditor({ navigate, session }) {
               <span>{formatTime(duration)}</span>
             </div>
           </div>
+
+          {/* 인지왜곡 분포 */}
+          {distortions.length > 0 && (
+            <div style={{ background: '#fff', padding: 24, borderRadius: 20, border: '1px solid #f1f5f9', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: '#fce7f3', color: '#db2777', padding: 6, borderRadius: 8, fontSize: 16 }}>🧠</div>
+                인지왜곡 ({distortions.length}건)
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                {Object.entries(distortionCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([type, count]) => {
+                  const meta = DISTORTION_LABELS[type];
+                  if (!meta) return null;
+                  const maxCount = Math.max(...Object.values(distortionCounts));
+                  return (
+                    <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: '#475569', minWidth: 90, fontWeight: 600 }}>{meta.ko}</span>
+                      <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ width: `${(count / maxCount) * 100}%`, height: '100%', background: meta.color, borderRadius: 4 }} />
+                      </div>
+                      <span style={{ fontSize: 11, color: '#64748b', minWidth: 24, textAlign: 'right' }}>{count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', borderTop: '1px dashed #e2e8f0', paddingTop: 10 }}>
+                💡 발화의 인지왜곡 배지를 클릭하면 권장 개입 기법이 표시됩니다
+              </div>
+            </div>
+          )}
+
+          {/* CBT 워크시트 */}
+          {showWorksheet && worksheets.length > 0 && (
+            <div style={{ background: '#fff', padding: 24, borderRadius: 20, border: '1px solid #f1f5f9', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: '#cffafe', color: '#0891b2', padding: 6, borderRadius: 8, fontSize: 16 }}>📋</div>
+                CBT 워크시트 ({worksheets.length}건)
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {worksheets.map((w, i) => (
+                  <div key={i} style={{ background: '#f0fdfa', padding: 14, borderRadius: 10, borderLeft: '4px solid #0891b2' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#0e7490', marginBottom: 6 }}>
+                      💭 자동적 사고
+                    </div>
+                    <div style={{ fontSize: 13, color: '#0f172a', marginBottom: 10, lineHeight: 1.5, fontStyle: 'italic' }}>
+                      "{w.automatic_thought}"
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', marginBottom: 4 }}>✓ 반박 증거</div>
+                    <ul style={{ paddingLeft: 16, margin: '0 0 10px 0', fontSize: 12, color: '#334155', lineHeight: 1.5 }}>
+                      {(w.counter_evidence || []).map((e, j) => <li key={j}>{e}</li>)}
+                    </ul>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#0891b2', marginBottom: 4 }}>⚖ 균형잡힌 사고</div>
+                    <div style={{ fontSize: 12, color: '#0f172a', marginBottom: 10, lineHeight: 1.5, background: '#fff', padding: '8px 10px', borderRadius: 6 }}>
+                      {w.balanced_thought}
+                    </div>
+                    {w.emotional_shift && (
+                      <div style={{ fontSize: 11, color: '#475569', marginBottom: 6 }}>
+                        📉 감정 변화: <strong>{w.emotional_shift}</strong>
+                      </div>
+                    )}
+                    {w.homework_suggestion && (
+                      <div style={{ fontSize: 11, color: '#a16207', background: '#fef3c7', padding: '6px 10px', borderRadius: 6, marginTop: 6 }}>
+                        🎯 과제: {w.homework_suggestion}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 치료 동맹 균열 감지 결과 */}
           {ruptureEvents.length > 0 && (
@@ -531,6 +693,7 @@ export default function WorkspaceEditor({ navigate, session }) {
               const isRuptureWithdrawal = rupture?.rupture_type === 'withdrawal';
               const isRuptureConfrontation = rupture?.rupture_type === 'confrontation';
               const ruptureColor = isRuptureWithdrawal ? '#f59e0b' : (isRuptureConfrontation ? '#ef4444' : null);
+              const segDistortion = distortionMap[chat.id];
 
               return (
                 <div id={`segment-${chat.id}`} key={chat.id} style={{ display: 'flex', flexDirection: isCounselor ? 'row-reverse' : 'row', gap: 16, alignItems: 'flex-start' }}>
@@ -560,6 +723,19 @@ export default function WorkspaceEditor({ navigate, session }) {
                           {isRuptureWithdrawal ? '🟡 철수' : '🔴 대립'}
                         </span>
                       )}
+                      {segDistortion && (segDistortion.distortion_types || []).slice(0, 2).map(t => {
+                        const meta = DISTORTION_LABELS[t];
+                        if (!meta) return null;
+                        return (
+                          <span
+                            key={t}
+                            title={`${meta.ko} (강도 ${segDistortion.intensity})\n${segDistortion.explanation}\n\n💡 ${segDistortion.suggested_intervention}`}
+                            style={{ padding: '3px 8px', background: meta.color, color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, cursor: 'help' }}
+                          >
+                            🧠 {meta.ko}
+                          </span>
+                        );
+                      })}
                     </div>
                     <div
                       onClick={() => onSegmentClick(chat)}

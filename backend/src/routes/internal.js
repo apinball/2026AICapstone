@@ -8,6 +8,8 @@ import {
   saveRuptureEvents,
   saveSummary,
   saveRedactedSegments,
+  saveDistortions,
+  saveWorksheets,
   setJobStatus,
 } from "../services/db.js";
 
@@ -67,6 +69,44 @@ router.post("/redaction-callback", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     await setJobStatus(sessionId, "redaction", "error", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/distortion-callback", async (req, res) => {
+  const { sessionId, distortions, error } = req.body;
+  if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+  if (error) {
+    console.error(`[internal] Distortion failed for ${sessionId}: ${error}`);
+    await setJobStatus(sessionId, "distortion", "error", error);
+    return res.status(200).json({ ok: false, error });
+  }
+  try {
+    await saveDistortions(sessionId, distortions ?? []);
+    await setJobStatus(sessionId, "distortion", "completed");
+    console.log(`[internal] Saved ${distortions?.length ?? 0} distortions for ${sessionId}`);
+    res.json({ ok: true });
+  } catch (err) {
+    await setJobStatus(sessionId, "distortion", "error", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/worksheet-callback", async (req, res) => {
+  const { sessionId, worksheets, error } = req.body;
+  if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+  if (error) {
+    console.error(`[internal] Worksheet failed for ${sessionId}: ${error}`);
+    await setJobStatus(sessionId, "worksheet", "error", error);
+    return res.status(200).json({ ok: false, error });
+  }
+  try {
+    await saveWorksheets(sessionId, worksheets ?? []);
+    await setJobStatus(sessionId, "worksheet", "completed");
+    console.log(`[internal] Saved ${worksheets?.length ?? 0} worksheets for ${sessionId}`);
+    res.json({ ok: true });
+  } catch (err) {
+    await setJobStatus(sessionId, "worksheet", "error", err.message);
     res.status(500).json({ error: err.message });
   }
 });

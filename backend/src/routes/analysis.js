@@ -9,7 +9,7 @@
 import { Router } from "express";
 import { getSession, listSessions, deleteSession, setJobStatus, updateSegmentSpeakers, setSegmentNote, toggleBookmark } from "../services/db.js";
 import { getPresignedUrl, deleteFromS3 } from "../services/storage.js";
-import { runRuptureDetection, runSummary, runRedaction } from "../services/aiClient.js";
+import { runRuptureDetection, runSummary, runRedaction, runDistortionDetection, runWorksheetGeneration } from "../services/aiClient.js";
 
 const router = Router();
 
@@ -99,6 +99,39 @@ router.post("/:sessionId/redact", async (req, res) => {
     res.status(202).json({ status: "started", message: "백그라운드에서 처리 중" });
   } catch (err) {
     await setJobStatus(req.params.sessionId, "redaction", "error", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/:sessionId/distortion", async (req, res) => {
+  try {
+    const session = await getSession(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    const segments = session.analysisResult?.segments;
+    if (!segments?.length) {
+      return res.status(400).json({ error: "Session has no segments to analyze" });
+    }
+    await setJobStatus(req.params.sessionId, "distortion", "processing");
+    await runDistortionDetection(req.params.sessionId, segments);
+    res.status(202).json({ status: "started", message: "인지왜곡 탐지 중" });
+  } catch (err) {
+    await setJobStatus(req.params.sessionId, "distortion", "error", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/:sessionId/worksheet", async (req, res) => {
+  try {
+    const session = await getSession(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    if (!session.distortions?.length) {
+      return res.status(400).json({ error: "인지왜곡 분석을 먼저 실행하세요" });
+    }
+    await setJobStatus(req.params.sessionId, "worksheet", "processing");
+    await runWorksheetGeneration(req.params.sessionId);
+    res.status(202).json({ status: "started", message: "CBT 워크시트 생성 중" });
+  } catch (err) {
+    await setJobStatus(req.params.sessionId, "worksheet", "error", err.message);
     res.status(500).json({ error: err.message });
   }
 });

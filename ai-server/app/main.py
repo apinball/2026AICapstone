@@ -26,6 +26,8 @@ from pipelines.track_c_fusion import FusionPipeline
 from pipelines.track_d_rupture import RupturePipeline
 from pipelines.summary import SummaryPipeline
 from pipelines.redaction import RedactionPipeline
+from pipelines.cognitive_distortion import CognitiveDistortionPipeline
+from pipelines.cbt_worksheet import CBTWorksheetPipeline
 from llm.factory import get_llm_provider
 
 # ── 전역 파이프라인 인스턴스 ────────────────────────────────────────────────
@@ -51,12 +53,14 @@ async def lifespan(app: FastAPI):
     pipelines["acoustic"] = AcousticPipeline(device=device)
     pipelines["fusion"] = FusionPipeline()
 
-    # LLM 기반 파이프라인 (Track D + Summary + Redaction)
+    # LLM 기반 파이프라인 (Track D + Summary + Redaction + CBT)
     try:
         llm = get_llm_provider()
         pipelines["rupture"] = RupturePipeline(llm)
         pipelines["summary"] = SummaryPipeline(llm)
         pipelines["redaction"] = RedactionPipeline(llm)
+        pipelines["distortion"] = CognitiveDistortionPipeline(llm)
+        pipelines["worksheet"] = CBTWorksheetPipeline(llm)
         print(f"[startup] LLM pipelines ready (provider: {llm.name})")
     except Exception as e:
         print(f"[startup] LLM pipelines init failed: {e}")
@@ -250,6 +254,117 @@ async def analyze_summary(request: RuptureRequest, background_tasks: BackgroundT
 
 class RedactionResponse(BaseModel):
     redacted: list[str]
+
+
+# ── 인지왜곡 탐지 + CBT 워크시트 엔드포인트 ─────────────────────────────
+
+
+class CBTRequest(BaseModel):
+    segments: list[RuptureSegment]
+    distortions: Optional[list[dict]] = None   # 워크시트 생성 시에만 사용
+    callback_url: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+class DistortionItem(BaseModel):
+    segment_idx: int
+    distortion_types: list[str]
+    intensity: int
+    explanation: str
+    suggested_intervention: str
+
+
+class DistortionResponse(BaseModel):
+    count: int
+    distortions: list[DistortionItem]
+
+
+class WorksheetItem(BaseModel):
+    based_on_segment: int
+    situation: str
+    automatic_thought: str
+    distortion_types: list[str]
+    supporting_evidence: list[str]
+    counter_evidence: list[str]
+    balanced_thought: str
+    emotional_shift: str
+    homework_suggestion: str
+
+
+class WorksheetResponse(BaseModel):
+    count: int
+    worksheets: list[WorksheetItem]
+
+
+async def _process_distortion_async(segments: list[dict], callback_url: str, session_id: str):
+    distortion = pipelines.get("distortion")
+    if distortion is None:
+        await _post_callback(callback_url, {"sessionId": session_id, "error": "pipeline not initialized"})
+        return
+    try:
+        result = await distortion.detect(segments)
+        await _post_callback(callback_url, {"sessionId": session_id, "distortions": result})
+    except Exception as e:
+        traceback.print_exc()
+        await _post_callback(callback_url, {"sessionId": session_id, "error": str(e)})
+
+
+@app.post("/analyze/distortion", response_model=DistortionResponse)
+async def analyze_distortion(request: CBTRequest, background_tasks: BackgroundTasks):
+    """
+    내담자 발화에서 인지왜곡(Cognitive Distortion) 자동 탐지.
+    """
+    distortion = pipelines.get("distortion")
+    if distortion is None:
+        raise HTTPException(status_code=503, detail="Distortion pipeline not initialized")
+
+    segments_dict = [s.model_dump() for s in request.segments]
+
+    if request.callback_url and request.session_id:
+        background_tasks.add_task(
+            _process_distortion_async, segments_dict, request.callback_url, request.session_id
+        )
+        return DistortionResponse(count=0, distortions=[])
+
+    result = await distortion.detect(segments_dict)
+    return DistortionResponse(count=len(result), distortions=result)
+
+
+async def _process_worksheet_async(
+    segments: list[dict], distortions: list[dict], callback_url: str, session_id: str
+):
+    worksheet = pipelines.get("worksheet")
+    if worksheet is None:
+        await _post_callback(callback_url, {"sessionId": session_id, "error": "pipeline not initialized"})
+        return
+    try:
+        result = await worksheet.generate(segments, distortions)
+        await _post_callback(callback_url, {"sessionId": session_id, "worksheets": result})
+    except Exception as e:
+        traceback.print_exc()
+        await _post_callback(callback_url, {"sessionId": session_id, "error": str(e)})
+
+
+@app.post("/analyze/worksheet", response_model=WorksheetResponse)
+async def analyze_worksheet(request: CBTRequest, background_tasks: BackgroundTasks):
+    """
+    탐지된 인지왜곡에 대해 CBT 표준 워크시트 자동 생성.
+    """
+    worksheet = pipelines.get("worksheet")
+    if worksheet is None:
+        raise HTTPException(status_code=503, detail="Worksheet pipeline not initialized")
+
+    segments_dict = [s.model_dump() for s in request.segments]
+    distortions = request.distortions or []
+
+    if request.callback_url and request.session_id:
+        background_tasks.add_task(
+            _process_worksheet_async, segments_dict, distortions, request.callback_url, request.session_id
+        )
+        return WorksheetResponse(count=0, worksheets=[])
+
+    result = await worksheet.generate(segments_dict, distortions)
+    return WorksheetResponse(count=len(result), worksheets=result)
 
 
 async def _process_redaction_async(segments: list[dict], callback_url: str, session_id: str):

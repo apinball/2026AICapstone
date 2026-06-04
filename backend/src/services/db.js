@@ -23,3 +23,5 @@ export const setJobStatus = mod.setJobStatus;
 export const updateSegmentSpeakers = mod.updateSegmentSpeakers;
 export const setSegmentNote = mod.setSegmentNote;
 export const toggleBookmark = mod.toggleBookmark;
+export const saveDistortions = mod.saveDistortions;
+export const saveWorksheets = mod.saveWorksheets;

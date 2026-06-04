@@ -96,3 +96,39 @@ export async function runSummary(sessionId, segments = null) {
 export async function runRedaction(sessionId, segments = null) {
   return triggerAsyncJob(sessionId, segments, "/analyze/redaction", "redaction-callback");
 }
+
+export async function runDistortionDetection(sessionId, segments = null) {
+  return triggerAsyncJob(sessionId, segments, "/analyze/distortion", "distortion-callback");
+}
+
+/**
+ * CBT 워크시트는 distortions를 함께 전달해야 함.
+ */
+export async function runWorksheetGeneration(sessionId) {
+  const { getSession } = await import("./db.js");
+  const session = await getSession(sessionId);
+  const segments = session?.analysisResult?.segments;
+  const distortions = session?.distortions;
+  if (!segments?.length) throw new Error("Session has no segments");
+  if (!distortions?.length) throw new Error("No distortions detected — run distortion analysis first");
+
+  const callbackUrl = `${SELF_INTERNAL_URL}/api/internal/worksheet-callback`;
+  console.log(`[aiClient] /analyze/worksheet for session ${sessionId} (${distortions.length} distortions) → callback ${callbackUrl}`);
+
+  const response = await fetch(`${AI_SERVER_URL}/analyze/worksheet`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      segments,
+      distortions,
+      callback_url: callbackUrl,
+      session_id: sessionId,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`AI server error ${response.status}: ${text}`);
+  }
+  return { status: "started" };
+}
